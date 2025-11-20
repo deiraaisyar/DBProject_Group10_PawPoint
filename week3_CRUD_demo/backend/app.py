@@ -117,6 +117,14 @@ def create_pet():
             conn.commit()
             return jsonify({"message": "Pet created"}), 201
 
+@app.get("/pets")
+def get_pets():
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM Pet")
+            return jsonify(cur.fetchall())
+
 
 @app.get("/pets/<int:pet_id>")
 def get_pet(pet_id):
@@ -125,6 +133,39 @@ def get_pet(pet_id):
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM Pet WHERE pet_id=%s", (pet_id,))
             return jsonify(cur.fetchone())
+
+
+@app.put("/pets/<int:pet_id>")
+def update_pet(pet_id):
+    data = request.json
+    query = """
+        UPDATE Pet SET name=%s, species=%s, breed=%s, age=%s, gender=%s, owner_id=%s
+        WHERE pet_id=%s
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (
+                data["name"],
+                data.get("species"),
+                data.get("breed"),
+                data.get("age"),
+                data.get("gender", "Unknown"),
+                data["owner_id"],
+                pet_id
+            ))
+            conn.commit()
+            return jsonify({"message": "Pet updated"})
+
+
+@app.delete("/pets/<int:pet_id>")
+def delete_pet(pet_id):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM Pet WHERE pet_id=%s", (pet_id,))
+            conn.commit()
+            return jsonify({"message": "Pet deleted"})
 
 
 # ------------------------------
