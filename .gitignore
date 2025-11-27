@@ -1,0 +1,66 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# dotenv
+.env
+.env.*
+
+# SQLite / local DBs
+*.sqlite3
+*.db
+
+# Logs
+*.log
+.log
+
+# Unit test / coverage
+.pytest_cache/
+htmlcov/
+coverage/
+coverage.*
+
+# MyPy
+.mypy_cache/
+
+# Editor folders
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+coverage/
+
+# Misc
+*.swp
+*.swo
+Thumbs.db

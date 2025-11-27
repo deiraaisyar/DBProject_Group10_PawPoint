@@ -2,11 +2,10 @@ CREATE TABLE User (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(300) NOT NULL,
-    role ENUM('superadmin', 'admin', 'vet', 'pet_owner') NOT NULL,
+    role ENUM('admin', 'vet', 'pet_owner') NOT NULL,
     email VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
 
 CREATE TABLE PetOwner (
     owner_id INT AUTO_INCREMENT PRIMARY KEY,
