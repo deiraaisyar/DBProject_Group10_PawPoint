@@ -12,7 +12,7 @@ erDiagram
 
     role {
         int role_id PK
-        string role
+        enum role
     }
 
     user_role {
@@ -38,7 +38,7 @@ erDiagram
         string name
         string species
         string breed
-        string gender
+        enum gender
         date birth_date
         int age
     }
@@ -53,7 +53,7 @@ erDiagram
     appointment {
         int appointment_id PK
         datetime datetime
-        string status
+        enum status
         int pet_id FK
         int clinic_id FK
         int veterinarian_id FK
@@ -69,7 +69,7 @@ erDiagram
 
     veterinarian_schedule {
         int schedule_id PK
-        string day
+        enum day
         time time_start
         time time_end
         int veterinarian_id FK
