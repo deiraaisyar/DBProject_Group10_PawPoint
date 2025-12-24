@@ -16,8 +16,14 @@ export default function Sidebar({ user, onLogout, activePage, onChange }) {
     menuItems.push({ id: 'reports', label: 'Reports' })
   }
 
-  // hide certain items for admin (e.g., My Pets is not relevant)
-  const itemsToShow = menuItems.filter(item => !(user?.role === 'admin' && item.id === 'pets'))
+  // hide My Pets for admin; hide pets and appointments for non-petowner roles
+  const itemsToShow = menuItems.filter(item => {
+    if (user?.role === 'admin' && item.id === 'pets') return false
+    if (user?.role === 'vet' && (item.id === 'pets' || item.id === 'appointments')) return false
+    if (user?.role === 'pet_owner' && item.id === 'vets') return false
+    if (user?.role === 'pet_owner' && item.id === 'clinics') return false
+    return true
+  })
 
   return (
     <aside className="sidebar">

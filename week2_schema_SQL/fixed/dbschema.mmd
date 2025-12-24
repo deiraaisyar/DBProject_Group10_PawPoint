@@ -1,0 +1,96 @@
+erDiagram
+
+    user {
+        int user_id PK
+        string first_name
+        string last_name
+        string email
+        string password_hash
+        string phone_no
+        datetime created_at
+    }
+
+    role {
+        int role_id PK
+        string role
+    }
+
+    user_role {
+        int user_id FK
+        int role_id FK
+    }
+
+    pet_owner {
+        int owner_id PK
+        string address
+        int user_id FK
+        int pet_id FK
+    }
+
+    veterinarian {
+        int veterinarian_id PK
+        string license_no
+        int user_id FK
+    }
+
+    pet {
+        int pet_id PK
+        string name
+        string species
+        string breed
+        string gender
+        date birth_date
+        int age
+    }
+
+    clinic {
+        int clinic_id PK
+        string name
+        string phone_no
+        string address
+    }
+
+    appointment {
+        int appointment_id PK
+        datetime datetime
+        string status
+        int pet_id FK
+        int clinic_id FK
+        int veterinarian_id FK
+    }
+
+    treatment_record {
+        int record_id PK
+        date date
+        string diagnosis
+        string note
+        int appointment_id FK
+    }
+
+    veterinarian_schedule {
+        int schedule_id PK
+        string day
+        time time_start
+        time time_end
+        int veterinarian_id FK
+    }
+
+    %% =====================
+    %% RELATIONSHIPS
+    %% =====================
+
+    user ||--|{ user_role : has
+    role ||--|{ user_role : assigned_to
+
+    user ||--o| pet_owner : is_linked_to
+    user ||--o| veterinarian : is_linked_to
+
+    pet |o--|{ pet_owner : owns
+
+    pet ||--o{ appointment : scheduled_for
+    clinic ||--o{ appointment : hosts
+    veterinarian ||--o{ appointment : handles
+
+    appointment ||--o| treatment_record : generates
+
+    veterinarian ||--o{ veterinarian_schedule : has

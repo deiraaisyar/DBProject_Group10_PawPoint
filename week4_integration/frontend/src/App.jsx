@@ -3,6 +3,8 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Sidebar from './components/Sidebar'
 import PetOwner from './pages/PetOwner'
+import MyPets from './pages/MyPets'
+import Appointments from './pages/Appointments'
 import Veterinarian from './pages/Veterinarian'
 import Admin from './pages/Admin'
 import './App.css'
@@ -42,9 +44,9 @@ export default function App() {
       case 'dashboard':
         return <Dashboard user={user} activePage={activePage} onNavigate={setActivePage} />
       case 'pets':
-        return <PetOwner />
+        return <MyPets />
       case 'appointments':
-        return <PetOwner />
+        return <Appointments />
       case 'vets':
         return <Veterinarian />
       case 'clinics':
