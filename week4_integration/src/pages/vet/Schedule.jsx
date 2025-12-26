@@ -1,14 +1,37 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { vetAPI } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Schedule = () => {
+  const { user } = useAuth();
   const [schedules, setSchedules] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [currentVetId, setCurrentVetId] = useState(null);
   const [formData, setFormData] = useState({
-    day: 'monday',
+    day: 'Monday',
     time_start: '09:00',
     time_end: '17:00',
   });
+
+  // Load the logged-in vet's veterinarian_id and their schedules
+  useEffect(() => {
+    const init = async () => {
+      try {
+        // Find veterinarian record for the current user
+        const vetsRes = await vetAPI.getAll();
+        const me = vetsRes.data.find(v => v.user_id === user?.user_id);
+        if (me) {
+          setCurrentVetId(me.veterinarian_id);
+          // Load existing schedules
+          const schedRes = await vetAPI.getSchedules(me.veterinarian_id);
+          setSchedules(schedRes.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to initialize vet schedule page:', err);
+      }
+    };
+    init();
+  }, [user]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -17,9 +40,23 @@ const Schedule = () => {
   const handleAddSchedule = async (e) => {
     e.preventDefault();
     try {
-      await vetAPI.createSchedule(formData);
-      setFormData({ day: 'monday', time_start: '09:00', time_end: '17:00' });
+      if (!currentVetId) {
+        alert('Unable to determine your veterinarian ID. Please re-login.');
+        return;
+      }
+      // Normalize payload with veterinarian_id and capitalized day
+      const payload = {
+        day: formData.day,
+        time_start: formData.time_start,
+        time_end: formData.time_end,
+        veterinarian_id: currentVetId,
+      };
+      await vetAPI.createSchedule(payload);
+      // Reset and refresh
+      setFormData({ day: 'Monday', time_start: '09:00', time_end: '17:00' });
       setShowForm(false);
+      const schedRes = await vetAPI.getSchedules(currentVetId);
+      setSchedules(schedRes.data || []);
     } catch (err) {
       console.error('Failed to add schedule:', err);
     }
@@ -44,13 +81,13 @@ const Schedule = () => {
             onChange={handleChange}
             className="w-full border px-3 py-2 rounded"
           >
-            <option value="monday">Monday</option>
-            <option value="tuesday">Tuesday</option>
-            <option value="wednesday">Wednesday</option>
-            <option value="thursday">Thursday</option>
-            <option value="friday">Friday</option>
-            <option value="saturday">Saturday</option>
-            <option value="sunday">Sunday</option>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
           </select>
           <input
             type="time"

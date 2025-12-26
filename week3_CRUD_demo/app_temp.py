@@ -100,35 +100,47 @@ def register():
 
 @app.post("/login")
 def login():
-    data = request.json
+    try:
+        data = request.json
+        
+        if not data.get("email") or not data.get("password"):
+            return jsonify({"message": "Email and password required"}), 400
 
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT u.user_id, u.password_hash, r.role
-                FROM user u
-                JOIN user_role ur ON u.user_id = ur.user_id
-                JOIN role r ON ur.role_id = r.role_id
-                WHERE u.email=%s
-            """, (data["email"],))
-            user = cur.fetchone()
+        conn = get_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT u.user_id, u.password_hash, r.role, u.first_name, u.last_name
+                    FROM user u
+                    JOIN user_role ur ON u.user_id = ur.user_id
+                    JOIN role r ON ur.role_id = r.role_id
+                    WHERE u.email=%s
+                    LIMIT 1
+                """, (data["email"],))
+                user = cur.fetchone()
 
-    if not user or not check_password_hash(
-        user["password_hash"], data["password"]
-    ):
-        return jsonify({"message": "Invalid credentials"}), 401
+        if not user:
+            return jsonify({"message": "User not found"}), 401
+        
+        if not check_password_hash(user["password_hash"], data["password"]):
+            return jsonify({"message": "Invalid password"}), 401
 
-    # JWT subject ('sub') must be a string for jwt library; cast id to str
-    token = create_access_token(
-        identity=str(user["user_id"]),
-        additional_claims={"role": user["role"]}
-    )
+        # JWT subject ('sub') must be a string for jwt library; cast id to str
+        token = create_access_token(
+            identity=str(user["user_id"]),
+            additional_claims={"role": user["role"]}
+        )
 
-    return jsonify({
-        "access_token": token,
-        "role": user["role"]
-    })
+        return jsonify({
+            "access_token": token,
+            "role": user["role"],
+            "user_id": user["user_id"],
+            "first_name": user["first_name"],
+            "last_name": user["last_name"]
+        }), 200
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 
 @app.get("/profile")
@@ -385,6 +397,77 @@ def update_clinic(clinic_id):
     return jsonify({"message": "Clinic updated"}), 200
 
 
+# =========================
+# VETERINARIAN (VET ENDPOINTS)
+# =========================
+@app.get("/veterinarians")
+@jwt_required()
+def get_veterinarians():
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    v.veterinarian_id,
+                    v.license_no,
+                    u.user_id,
+                    u.first_name,
+                    u.last_name,
+                    u.email,
+                    u.phone_no
+                FROM veterinarian v
+                JOIN user u ON v.user_id = u.user_id
+            """)
+            vets = cur.fetchall()
+            return jsonify(vets)
+
+
+@app.get("/veterinarians/<int:vet_id>/schedules")
+@jwt_required()
+def get_veterinarian_schedules(vet_id):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    schedule_id,
+                    day,
+                    time_start,
+                    time_end,
+                    veterinarian_id
+                FROM veterinarian_schedule
+                WHERE veterinarian_id = %s
+                ORDER BY 
+                    FIELD(day, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
+                    time_start
+            """, (vet_id,))
+            schedules = cur.fetchall()
+            return jsonify(schedules)
+
+
+@app.post("/veterinarian-schedules")
+@role_required("veterinarian", "admin")
+def create_schedule():
+    data = request.json
+
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO veterinarian_schedule
+                (day, time_start, time_end, veterinarian_id)
+                VALUES (%s, %s, %s, %s)
+            """, (
+                data["day"],
+                data["time_start"],
+                data["time_end"],
+                data["veterinarian_id"]
+            ))
+            conn.commit()
+
+    return jsonify({"message": "Schedule created"}), 201
+
+
 @app.put("/appointments/<int:appointment_id>")
 @role_required("veterinarian", "admin")
 def update_appointment(appointment_id):
@@ -465,46 +548,6 @@ def update_treatment(record_id):
             conn.commit()
 
     return jsonify({"message": "Treatment updated"})
-
-
-# =========================
-# VETERINARIAN SCHEDULE (VET)
-# =========================
-@app.post("/veterinarian-schedules")
-@role_required("veterinarian", "admin")
-def create_schedule():
-    data = request.json
-
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO veterinarian_schedule
-                (day,time_start,time_end,veterinarian_id)
-                VALUES (%s,%s,%s,%s)
-            """, (
-                data["day"],
-                data["time_start"],
-                data["time_end"],
-                data["veterinarian_id"]
-            ))
-            conn.commit()
-
-    return jsonify({"message": "Schedule created"}), 201
-
-
-@app.get("/veterinarians/<int:vet_id>/schedules")
-@jwt_required()
-def get_schedules(vet_id):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT day,time_start,time_end
-                FROM veterinarian_schedule
-                WHERE veterinarian_id=%s
-            """, (vet_id,))
-            return jsonify(cur.fetchall())
 
 
 # =========================

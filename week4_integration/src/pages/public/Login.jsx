@@ -20,15 +20,32 @@ const Login = () => {
     setLoading(true);
 
     try {
+      console.log('Attempting login with:', { email: formData.email });
       const response = await authAPI.login(formData.email, formData.password);
+      console.log('Login response:', response.data);
+      
       const userData = {
+        user_id: response.data.user_id,
         role: response.data.role,
-        first_name: formData.email.split('@')[0],
+        first_name: response.data.first_name,
+        last_name: response.data.last_name,
+        email: formData.email,
       };
+      
       login(userData, response.data.access_token);
-      navigate('/');
+      
+      // Redirect based on role
+      if (response.data.role === 'admin') {
+        navigate('/admin');
+      } else if (response.data.role === 'veterinarian') {
+        navigate('/vet');
+      } else {
+        navigate('/owner');
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      console.error('Login error:', err);
+      const errorMsg = err.response?.data?.message || err.message || 'Login failed. Please try again.';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
