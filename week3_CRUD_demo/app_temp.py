@@ -144,10 +144,13 @@ def profile():
 @role_required("pet_owner", "admin")
 def create_pet():
     data = request.json
+    claims = get_jwt()
+    user_id = claims.get("sub")  # JWT identity is stored in 'sub'
 
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
+            # Insert pet
             cur.execute("""
                 INSERT INTO pet
                 (name,species,breed,gender,birth_date,age)
@@ -160,18 +163,40 @@ def create_pet():
                 data["birth_date"],
                 data["age"]
             ))
+            pet_id = cur.lastrowid
+
+            # Auto-create pet_owner record linking user to pet
+            cur.execute("""
+                INSERT INTO pet_owner (address, user_id, pet_id)
+                VALUES (%s, %s, %s)
+            """, (data.get("address", ""), user_id, pet_id))
+            
             conn.commit()
 
-    return jsonify({"message": "Pet created"}), 201
+    return jsonify({"message": "Pet created", "pet_id": pet_id}), 201
 
 
 @app.get("/pets")
 @role_required("pet_owner", "admin")
 def get_pets():
+    claims = get_jwt()
+    user_id = claims.get("sub")
+    role = claims.get("role")
+
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM pet")
+            if role == "admin":
+                # Admin can see all pets
+                cur.execute("SELECT * FROM pet")
+            else:
+                # Pet owner sees only their pets
+                cur.execute("""
+                    SELECT p.* 
+                    FROM pet p
+                    JOIN pet_owner po ON p.pet_id = po.pet_id
+                    WHERE po.user_id = %s
+                """, (user_id,))
             return jsonify(cur.fetchall())
 
 
@@ -205,20 +230,64 @@ def create_appointment():
 @app.get("/appointments")
 @jwt_required()
 def get_appointments():
+    claims = get_jwt()
+    user_id = claims.get("sub")
+    role = claims.get("role")
+
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT 
-                    a.appointment_id,
-                    a.datetime,
-                    a.status,
-                    p.name AS pet_name,
-                    c.name AS clinic_name
-                FROM appointment a
-                JOIN pet p ON a.pet_id = p.pet_id
-                JOIN clinic c ON a.clinic_id = c.clinic_id
-            """)
+            if role == "admin":
+                # Admin sees all appointments
+                cur.execute("""
+                    SELECT 
+                        a.appointment_id,
+                        a.datetime,
+                        a.status,
+                        p.name AS pet_name,
+                        c.name AS clinic_name,
+                        CONCAT(u.first_name, ' ', u.last_name) AS owner_name
+                    FROM appointment a
+                    JOIN pet p ON a.pet_id = p.pet_id
+                    JOIN clinic c ON a.clinic_id = c.clinic_id
+                    LEFT JOIN pet_owner po ON p.pet_id = po.pet_id
+                    LEFT JOIN user u ON po.user_id = u.user_id
+                """)
+            elif role == "veterinarian":
+                # Vet sees appointments assigned to them
+                cur.execute("""
+                    SELECT 
+                        a.appointment_id,
+                        a.datetime,
+                        a.status,
+                        p.name AS pet_name,
+                        c.name AS clinic_name,
+                        CONCAT(u.first_name, ' ', u.last_name) AS owner_name
+                    FROM appointment a
+                    JOIN pet p ON a.pet_id = p.pet_id
+                    JOIN clinic c ON a.clinic_id = c.clinic_id
+                    JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN pet_owner po ON p.pet_id = po.pet_id
+                    LEFT JOIN user u ON po.user_id = u.user_id
+                    WHERE v.user_id = %s
+                """, (user_id,))
+            else:
+                # Pet owner sees appointments for their pets
+                cur.execute("""
+                    SELECT 
+                        a.appointment_id,
+                        a.datetime,
+                        a.status,
+                        p.name AS pet_name,
+                        c.name AS clinic_name,
+                        CONCAT(u.first_name, ' ', u.last_name) AS owner_name
+                    FROM appointment a
+                    JOIN pet p ON a.pet_id = p.pet_id
+                    JOIN clinic c ON a.clinic_id = c.clinic_id
+                    JOIN pet_owner po ON p.pet_id = po.pet_id
+                    LEFT JOIN user u ON po.user_id = u.user_id
+                    WHERE po.user_id = %s
+                """, (user_id,))
             return jsonify(cur.fetchall())
 
 
@@ -302,6 +371,20 @@ def create_clinic():
     return jsonify({"message": "Clinic created"}), 201
 
 
+@app.put("/clinics/<int:clinic_id>")
+@role_required("admin")
+def update_clinic(clinic_id):
+    data = request.json
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE clinic SET name=%s, phone_no=%s, address=%s WHERE clinic_id=%s", (
+                data.get("name"), data.get("phone_no"), data.get("address"), clinic_id
+            ))
+            conn.commit()
+    return jsonify({"message": "Clinic updated"}), 200
+
+
 @app.put("/appointments/<int:appointment_id>")
 @role_required("veterinarian", "admin")
 def update_appointment(appointment_id):
@@ -349,8 +432,15 @@ def get_treatments():
                     t.date,
                     t.diagnosis,
                     t.note,
-                    t.appointment_id
+                    t.appointment_id,
+                    p.name AS pet_name,
+                    CONCAT(u.first_name, ' ', u.last_name) AS vet_name,
+                    v.license_no
                 FROM treatment_record t
+                LEFT JOIN appointment a ON t.appointment_id = a.appointment_id
+                LEFT JOIN pet p ON a.pet_id = p.pet_id
+                LEFT JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                LEFT JOIN user u ON v.user_id = u.user_id
             """)
             return jsonify(cur.fetchall())
 
@@ -459,10 +549,14 @@ def report_treatments():
                 SELECT 
                     a.appointment_id,
                     p.name AS pet_name,
-                    t.diagnosis
+                    t.diagnosis,
+                    CONCAT(u.first_name, ' ', u.last_name) AS vet_name,
+                    v.license_no
                 FROM treatment_record t
                 JOIN appointment a ON t.appointment_id = a.appointment_id
                 JOIN pet p ON a.pet_id = p.pet_id
+                LEFT JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                LEFT JOIN user u ON v.user_id = u.user_id
             """)
             return jsonify(cur.fetchall())
 
