@@ -3,6 +3,7 @@ from flask_jwt_extended import (
     JWTManager, create_access_token,
     jwt_required, get_jwt, verify_jwt_in_request
 )
+from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import get_connection
 import os
@@ -12,6 +13,7 @@ from functools import wraps
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 
 # =========================
 # JWT CONFIG
@@ -46,7 +48,7 @@ def role_required(*roles):
 def register():
     data = request.json
     hashed_pw = generate_password_hash(data["password"])
-    role_name = data.get("role", "owner")
+    role_name = data.get("role", "pet_owner")
 
     # normalize common role aliases to DB enum values
     role_map = {
@@ -139,7 +141,7 @@ def profile():
 # PET (OWNER / ADMIN)
 # =========================
 @app.post("/pets")
-@role_required("owner", "admin")
+@role_required("pet_owner", "admin")
 def create_pet():
     data = request.json
 
@@ -164,7 +166,7 @@ def create_pet():
 
 
 @app.get("/pets")
-@role_required("owner", "admin")
+@role_required("pet_owner", "admin")
 def get_pets():
     conn = get_connection()
     with conn:
@@ -177,7 +179,7 @@ def get_pets():
 # APPOINTMENT (OWNER / ADMIN)
 # =========================
 @app.post("/appointments")
-@role_required("owner", "admin")
+@role_required("pet_owner", "admin")
 def create_appointment():
     data = request.json
 
@@ -263,7 +265,7 @@ def get_owners():
 
 
 @app.post("/owners")
-@role_required("owner", "admin")
+@role_required("pet_owner", "admin")
 def create_owner():
     data = request.json
     conn = get_connection()
@@ -274,39 +276,6 @@ def create_owner():
             ))
             conn.commit()
     return jsonify({"message": "Owner record created"}), 201
-
-
-@app.get("/vets")
-@jwt_required()
-def get_vets():
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT v.veterinarian_id AS vet_id, v.license_no, v.user_id, u.first_name, u.last_name FROM veterinarian v JOIN user u ON v.user_id = u.user_id")
-            vets = cur.fetchall()
-            # map to fields frontend expects
-            result = []
-            for v in vets:
-                result.append({
-                    "vet_id": v.get("vet_id"),
-                    "name": f"{v.get('first_name') or ''} {v.get('last_name') or ''}".strip(),
-                    "license_no": v.get("license_no")
-                })
-            return jsonify(result)
-
-
-@app.post("/vets")
-@role_required("admin")
-def create_vet():
-    data = request.json
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("INSERT INTO veterinarian (license_no, user_id) VALUES (%s,%s)", (
-                data.get("license_no"), data.get("user_id")
-            ))
-            conn.commit()
-    return jsonify({"message": "Veterinarian created"}), 201
 
 
 @app.get("/clinics")

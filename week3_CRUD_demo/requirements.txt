@@ -1,4 +1,5 @@
 Flask
+Flask-CORS
 pymysql
 dotenv
 Flask-JWT-Extended
