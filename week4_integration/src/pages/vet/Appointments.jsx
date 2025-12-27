@@ -170,9 +170,6 @@ const Appointments = () => {
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-3">
-                          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl px-3 py-1 text-sm font-bold">
-                            #{apt.appointment_id}
-                          </div>
                           <h3 className="text-xl font-bold text-gray-800">🐾 {apt.pet_name || 'Unknown Pet'}</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">

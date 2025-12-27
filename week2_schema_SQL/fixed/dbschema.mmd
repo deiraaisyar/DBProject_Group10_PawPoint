@@ -33,6 +33,12 @@ erDiagram
         int user_id FK
     }
 
+    veterinarian_clinic {
+        int vetclinic_id PK
+        int veterinarian_id FK
+        int clinic_id FK
+    }
+
     pet {
         int pet_id PK
         string name
@@ -93,4 +99,7 @@ erDiagram
 
     appointment ||--o| treatment_record : generates
 
-    veterinarian ||--o{ veterinarian_schedule : has
+    veterinarian |{--o{ veterinarian_schedule : has
+
+    veterinarian ||--o{ veterinarian_clinic : assigned_to
+    clinic |{--o{ veterinarian_clinic : has

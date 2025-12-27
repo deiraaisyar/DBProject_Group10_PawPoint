@@ -201,11 +201,8 @@ const Clinics = () => {
           {clinics.map((clinic) => (
             <div key={clinic.clinic_id} className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all transform hover:-translate-y-1 overflow-hidden border-2 border-purple-100">
               <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
                   <span className="text-4xl">🏥</span>
-                  <span className="bg-white text-purple-600 px-3 py-1 rounded-full text-xs font-bold">
-                    #{clinic.clinic_id}
-                  </span>
                 </div>
               </div>
               <div className="p-6">

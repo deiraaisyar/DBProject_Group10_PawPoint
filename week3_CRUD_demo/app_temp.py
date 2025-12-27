@@ -41,6 +41,38 @@ def role_required(*roles):
     return wrapper
 
 
+def current_user_id():
+    """Return JWT subject as int when possible, otherwise raw value."""
+    claims = get_jwt()
+    sub = claims.get("sub")
+    try:
+        return int(sub)
+    except (TypeError, ValueError):
+        return sub
+
+
+def ensure_vet_and_clinic(cur, veterinarian_id, clinic_id):
+    """Validate that veterinarian exists and is assigned to the target clinic via veterinarian_clinic."""
+    cur.execute(
+        "SELECT 1 FROM veterinarian WHERE veterinarian_id=%s",
+        (veterinarian_id,)
+    )
+    vet = cur.fetchone()
+    if not vet:
+        return False, "Veterinarian not found"
+
+    cur.execute(
+        """
+            SELECT 1 FROM veterinarian_clinic
+            WHERE veterinarian_id=%s AND clinic_id=%s
+        """,
+        (veterinarian_id, clinic_id)
+    )
+    if not cur.fetchone():
+        return False, "Veterinarian must be assigned to the selected clinic"
+    return True, None
+
+
 # =========================
 # AUTH & USER
 # =========================
@@ -93,34 +125,52 @@ def register():
                 VALUES (%s,%s)
             """, (user_id, role["role_id"]))
 
-            # If registering as veterinarian, handle license_no validation
+            # If registering as veterinarian, ensure clinic mapping + license uniqueness
             if role_name == "veterinarian":
                 license_no = data.get("license_no")
-                if not license_no:
-                    return jsonify({"message": "License number is required for veterinarians"}), 400
-                
-                # Check if license exists and is not already used
-                cur.execute("""
-                    SELECT veterinarian_id, user_id 
-                    FROM veterinarian 
-                    WHERE license_no = %s
-                """, (license_no,))
+                clinic_id = data.get("clinic_id")
+
+                if not license_no or not clinic_id:
+                    return jsonify({"message": "license_no and clinic_id are required for veterinarians"}), 400
+
+                # Clinic must exist
+                cur.execute("SELECT clinic_id FROM clinic WHERE clinic_id=%s", (clinic_id,))
+                clinic = cur.fetchone()
+                if not clinic:
+                    return jsonify({"message": "Clinic not found"}), 404
+
+                # Check license uniqueness; clinic linkage is handled via mapping table
+                cur.execute(
+                    "SELECT veterinarian_id, user_id FROM veterinarian WHERE license_no=%s",
+                    (license_no,)
+                )
                 existing_vet = cur.fetchone()
-                
-                if not existing_vet:
-                    # License doesn't exist in system
-                    return jsonify({"message": "Invalid license number. Please contact admin."}), 400
-                
-                if existing_vet["user_id"] is not None:
-                    # License already associated with another user
-                    return jsonify({"message": "This license is already registered to another user."}), 400
-                
-                # Update veterinarian record with new user_id
-                cur.execute("""
-                    UPDATE veterinarian 
-                    SET user_id = %s 
-                    WHERE license_no = %s
-                """, (user_id, license_no))
+
+                if existing_vet:
+                    if existing_vet["user_id"]:
+                        return jsonify({"message": "This license is already registered to another user."}), 400
+                    vet_id = existing_vet["veterinarian_id"]
+                    cur.execute(
+                        "UPDATE veterinarian SET user_id=%s WHERE veterinarian_id=%s",
+                        (user_id, vet_id)
+                    )
+                else:
+                    # create new veterinarian record bound to clinic
+                    cur.execute(
+                        "INSERT INTO veterinarian (license_no, user_id) VALUES (%s,%s)",
+                        (license_no, user_id)
+                    )
+                    vet_id = cur.lastrowid
+
+                # Map veterinarian to clinic via junction table (avoid duplicates)
+                cur.execute(
+                    """
+                        INSERT INTO veterinarian_clinic (veterinarian_id, clinic_id)
+                        VALUES (%s, %s)
+                        ON DUPLICATE KEY UPDATE clinic_id = clinic_id
+                    """,
+                    (existing_vet["veterinarian_id"] if existing_vet else vet_id, clinic_id)
+                )
 
             conn.commit()
 
@@ -185,8 +235,7 @@ def profile():
 @role_required("pet_owner", "admin")
 def create_pet():
     data = request.json
-    claims = get_jwt()
-    user_id = claims.get("sub")  # JWT identity is stored in 'sub'
+    user_id = current_user_id()
 
     conn = get_connection()
     with conn:
@@ -248,17 +297,34 @@ def get_pets():
 @role_required("pet_owner", "admin")
 def create_appointment():
     data = request.json
+    claims = get_jwt()
+    user_id = current_user_id()
+    role = claims.get("role")
 
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
+            # Pet owners can only book for their own pets
+            if role == "pet_owner":
+                cur.execute(
+                    "SELECT 1 FROM pet_owner WHERE pet_id=%s AND user_id=%s",
+                    (data["pet_id"], user_id)
+                )
+                if not cur.fetchone():
+                    return jsonify({"message": "You can only book appointments for your own pets"}), 403
+
+            # Validate veterinarian/clinic pairing via mapping
+            is_valid, err = ensure_vet_and_clinic(cur, data["veterinarian_id"], data["clinic_id"])
+            if not is_valid:
+                return jsonify({"message": err}), 400
+
             cur.execute("""
                 INSERT INTO appointment
                 (datetime,status,pet_id,clinic_id,veterinarian_id)
                 VALUES (%s,%s,%s,%s,%s)
             """, (
                 data["datetime"],
-                data["status"],
+                data.get("status", "scheduled"),
                 data["pet_id"],
                 data["clinic_id"],
                 data["veterinarian_id"]
@@ -272,7 +338,7 @@ def create_appointment():
 @jwt_required()
 def get_appointments():
     claims = get_jwt()
-    user_id = claims.get("sub")
+    user_id = current_user_id()
     role = claims.get("role")
 
     conn = get_connection()
@@ -287,12 +353,18 @@ def get_appointments():
                         a.status,
                         p.name AS pet_name,
                         c.name AS clinic_name,
-                        CONCAT(u.first_name, ' ', u.last_name) AS owner_name
+                        CONCAT(owner_u.first_name, ' ', owner_u.last_name) AS owner_name,
+                        v.veterinarian_id,
+                        v.license_no,
+                        CONCAT(vu.first_name, ' ', vu.last_name) AS vet_name
                     FROM appointment a
                     JOIN pet p ON a.pet_id = p.pet_id
                     JOIN clinic c ON a.clinic_id = c.clinic_id
+                    JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN veterinarian_clinic vc ON vc.veterinarian_id = v.veterinarian_id AND vc.clinic_id = a.clinic_id
+                    LEFT JOIN user vu ON v.user_id = vu.user_id
                     LEFT JOIN pet_owner po ON p.pet_id = po.pet_id
-                    LEFT JOIN user u ON po.user_id = u.user_id
+                    LEFT JOIN user owner_u ON po.user_id = owner_u.user_id
                 """)
             elif role == "veterinarian":
                 # Vet sees appointments assigned to them
@@ -303,13 +375,18 @@ def get_appointments():
                         a.status,
                         p.name AS pet_name,
                         c.name AS clinic_name,
-                        CONCAT(u.first_name, ' ', u.last_name) AS owner_name
+                        CONCAT(owner_u.first_name, ' ', owner_u.last_name) AS owner_name,
+                        v.veterinarian_id,
+                        v.license_no,
+                        CONCAT(vu.first_name, ' ', vu.last_name) AS vet_name
                     FROM appointment a
                     JOIN pet p ON a.pet_id = p.pet_id
                     JOIN clinic c ON a.clinic_id = c.clinic_id
                     JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN veterinarian_clinic vc ON vc.veterinarian_id = v.veterinarian_id AND vc.clinic_id = a.clinic_id
+                    LEFT JOIN user vu ON v.user_id = vu.user_id
                     LEFT JOIN pet_owner po ON p.pet_id = po.pet_id
-                    LEFT JOIN user u ON po.user_id = u.user_id
+                    LEFT JOIN user owner_u ON po.user_id = owner_u.user_id
                     WHERE v.user_id = %s
                 """, (user_id,))
             else:
@@ -321,25 +398,92 @@ def get_appointments():
                         a.status,
                         p.name AS pet_name,
                         c.name AS clinic_name,
-                        CONCAT(u.first_name, ' ', u.last_name) AS owner_name
+                        CONCAT(owner_u.first_name, ' ', owner_u.last_name) AS owner_name,
+                        v.veterinarian_id,
+                        v.license_no,
+                        CONCAT(vu.first_name, ' ', vu.last_name) AS vet_name
                     FROM appointment a
                     JOIN pet p ON a.pet_id = p.pet_id
                     JOIN clinic c ON a.clinic_id = c.clinic_id
                     JOIN pet_owner po ON p.pet_id = po.pet_id
-                    LEFT JOIN user u ON po.user_id = u.user_id
+                    LEFT JOIN user owner_u ON po.user_id = owner_u.user_id
+                    JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN veterinarian_clinic vc ON vc.veterinarian_id = v.veterinarian_id AND vc.clinic_id = a.clinic_id
+                    LEFT JOIN user vu ON v.user_id = vu.user_id
                     WHERE po.user_id = %s
                 """, (user_id,))
             return jsonify(cur.fetchall())
+
+
+@app.get("/appointments/<int:appointment_id>")
+@jwt_required()
+def get_appointment_detail(appointment_id):
+    claims = get_jwt()
+    role = claims.get("role")
+    user_id = current_user_id()
+
+    base_select = """
+        SELECT 
+            a.appointment_id,
+            a.datetime,
+            a.status,
+            p.name AS pet_name,
+            c.name AS clinic_name,
+            CONCAT(owner_u.first_name, ' ', owner_u.last_name) AS owner_name,
+            v.veterinarian_id,
+            v.license_no,
+            CONCAT(vu.first_name, ' ', vu.last_name) AS vet_name
+        FROM appointment a
+        JOIN pet p ON a.pet_id = p.pet_id
+        JOIN clinic c ON a.clinic_id = c.clinic_id
+        JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+        LEFT JOIN veterinarian_clinic vc ON vc.veterinarian_id = v.veterinarian_id AND vc.clinic_id = a.clinic_id
+        LEFT JOIN user vu ON v.user_id = vu.user_id
+        LEFT JOIN pet_owner po ON p.pet_id = po.pet_id
+        LEFT JOIN user owner_u ON po.user_id = owner_u.user_id
+        WHERE a.appointment_id = %s
+    """
+
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            if role == "admin":
+                cur.execute(base_select, (appointment_id,))
+            elif role == "veterinarian":
+                cur.execute(base_select + " AND v.user_id = %s", (appointment_id, user_id))
+            else:
+                cur.execute(base_select + " AND po.user_id = %s", (appointment_id, user_id))
+
+            record = cur.fetchone()
+            if not record:
+                return jsonify({"message": "Not found"}), 404
+            return jsonify(record)
 
 
 @app.put("/appointments/<int:appointment_id>/status")
 @role_required("veterinarian", "admin")
 def update_status(appointment_id):
     data = request.json
+    claims = get_jwt()
+    role = claims.get("role")
+    user_id = current_user_id()
 
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
+            if role == "veterinarian":
+                cur.execute(
+                    """
+                        SELECT 1
+                        FROM appointment a
+                        JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                        WHERE a.appointment_id=%s AND v.user_id=%s
+                    """,
+                    (appointment_id, user_id)
+                )
+                if not cur.fetchone():
+                    return jsonify({"message": "You can only update your own appointments"}), 403
+
             cur.execute("""
                 UPDATE appointment
                 SET status=%s
@@ -354,18 +498,94 @@ def update_status(appointment_id):
 @app.get("/pets/<int:pet_id>")
 @jwt_required()
 def get_pet(pet_id):
+    claims = get_jwt()
+    role = claims.get("role")
+    user_id = current_user_id()
+
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM pet WHERE pet_id=%s", (pet_id,))
+            if role == "admin":
+                cur.execute("SELECT * FROM pet WHERE pet_id=%s", (pet_id,))
+            else:
+                # Pet owners may only see their own pets; vets are blocked here for privacy
+                cur.execute(
+                    """
+                        SELECT p.*
+                        FROM pet p
+                        JOIN pet_owner po ON p.pet_id = po.pet_id
+                        WHERE p.pet_id=%s AND po.user_id=%s
+                    """,
+                    (pet_id, user_id)
+                )
             pet = cur.fetchone()
             if not pet:
                 return jsonify({"message": "Not found"}), 404
             return jsonify(pet)
 
 
+@app.put("/pets/<int:pet_id>")
+@role_required("pet_owner", "admin")
+def update_pet(pet_id):
+    data = request.json
+    claims = get_jwt()
+    role = claims.get("role")
+    user_id = current_user_id()
+
+    allowed = ["name", "species", "breed", "gender", "birth_date", "age"]
+    fields = []
+    values = []
+    for k in allowed:
+        if k in data:
+            fields.append(f"{k}=%s")
+            values.append(data[k])
+    if not fields:
+        return jsonify({"message": "No fields to update"}), 400
+
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            if role == "pet_owner":
+                cur.execute(
+                    "SELECT 1 FROM pet_owner WHERE pet_id=%s AND user_id=%s",
+                    (pet_id, user_id)
+                )
+                if not cur.fetchone():
+                    return jsonify({"message": "You can only update your own pets"}), 403
+
+            values.append(pet_id)
+            cur.execute(f"UPDATE pet SET {', '.join(fields)} WHERE pet_id=%s", tuple(values))
+            conn.commit()
+
+    return jsonify({"message": "Pet updated"})
+
+
+@app.delete("/pets/<int:pet_id>")
+@role_required("pet_owner", "admin")
+def delete_pet(pet_id):
+    claims = get_jwt()
+    role = claims.get("role")
+    user_id = current_user_id()
+
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            if role == "pet_owner":
+                cur.execute(
+                    "SELECT 1 FROM pet_owner WHERE pet_id=%s AND user_id=%s",
+                    (pet_id, user_id)
+                )
+                if not cur.fetchone():
+                    return jsonify({"message": "You can only delete your own pets"}), 403
+
+            cur.execute("DELETE FROM pet WHERE pet_id=%s", (pet_id,))
+            conn.commit()
+
+    return jsonify({"message": "Pet deleted"})
+
+
 @app.get("/owners")
-@jwt_required()
+@role_required("admin")
 def get_owners():
     conn = get_connection()
     with conn:
@@ -396,6 +616,19 @@ def get_clinics():
         with conn.cursor() as cur:
             cur.execute("SELECT clinic_id, name, phone_no, address FROM clinic")
             return jsonify(cur.fetchall())
+
+
+@app.get("/clinics/<int:clinic_id>")
+@jwt_required()
+def get_clinic(clinic_id):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT clinic_id, name, phone_no, address FROM clinic WHERE clinic_id=%s", (clinic_id,))
+            clinic = cur.fetchone()
+            if not clinic:
+                return jsonify({"message": "Not found"}), 404
+            return jsonify(clinic)
 
 
 @app.post("/clinics")
@@ -439,16 +672,111 @@ def get_veterinarians():
                 SELECT 
                     v.veterinarian_id,
                     v.license_no,
-                    u.user_id,
+                    v.user_id,
                     u.first_name,
                     u.last_name,
                     u.email,
                     u.phone_no
                 FROM veterinarian v
-                JOIN user u ON v.user_id = u.user_id
+                LEFT JOIN user u ON v.user_id = u.user_id
             """)
             vets = cur.fetchall()
             return jsonify(vets)
+
+
+@app.get("/veterinarians/<int:vet_id>")
+@jwt_required()
+def get_veterinarian(vet_id):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    v.veterinarian_id,
+                    v.license_no,
+                    v.user_id,
+                    u.first_name,
+                    u.last_name,
+                    u.email,
+                    u.phone_no
+                FROM veterinarian v
+                LEFT JOIN user u ON v.user_id = u.user_id
+                WHERE v.veterinarian_id = %s
+            """, (vet_id,))
+            vet = cur.fetchone()
+            if not vet:
+                return jsonify({"message": "Not found"}), 404
+            return jsonify(vet)
+
+
+@app.get("/veterinarians/clinic/<int:clinic_id>")
+@jwt_required()
+def get_veterinarians_by_clinic(clinic_id):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    v.veterinarian_id,
+                    v.license_no,
+                    v.user_id,
+                    u.first_name,
+                    u.last_name,
+                    u.email,
+                    u.phone_no
+                FROM veterinarian v
+                JOIN veterinarian_clinic vc ON vc.veterinarian_id = v.veterinarian_id
+                JOIN clinic c ON vc.clinic_id = c.clinic_id
+                LEFT JOIN user u ON v.user_id = u.user_id
+                WHERE c.clinic_id = %s
+            """, (clinic_id,))
+            return jsonify(cur.fetchall())
+
+
+@app.post("/veterinarians")
+@role_required("admin")
+def create_veterinarian():
+    data = request.json
+    license_no = data.get("license_no")
+    user_id = data.get("user_id")
+    clinic_id = data.get("clinic_id")
+
+    if not license_no:
+        return jsonify({"message": "license_no is required"}), 400
+
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM veterinarian WHERE license_no=%s", (license_no,))
+            if cur.fetchone():
+                return jsonify({"message": "License already exists"}), 400
+
+            if user_id:
+                cur.execute("SELECT 1 FROM user WHERE user_id=%s", (user_id,))
+                if not cur.fetchone():
+                    return jsonify({"message": "User not found"}), 404
+
+            cur.execute(
+                "INSERT INTO veterinarian (license_no, user_id) VALUES (%s,%s)",
+                (license_no, user_id)
+            )
+            vet_id = cur.lastrowid
+
+            if clinic_id:
+                cur.execute("SELECT 1 FROM clinic WHERE clinic_id=%s", (clinic_id,))
+                if not cur.fetchone():
+                    return jsonify({"message": "Clinic not found"}), 404
+                cur.execute(
+                    """
+                        INSERT INTO veterinarian_clinic (veterinarian_id, clinic_id)
+                        VALUES (%s,%s)
+                        ON DUPLICATE KEY UPDATE clinic_id = clinic_id
+                    """,
+                    (vet_id, clinic_id)
+                )
+
+            conn.commit()
+            return jsonify({"message": "Veterinarian created", "veterinarian_id": vet_id}), 201
 
 
 @app.get("/veterinarians/<int:vet_id>/schedules")
@@ -461,13 +789,13 @@ def get_veterinarian_schedules(vet_id):
                 SELECT 
                     schedule_id,
                     day,
-                    time_start,
-                    time_end,
+                    TIME_FORMAT(time_start, '%%H:%%i') AS time_start,
+                    TIME_FORMAT(time_end, '%%H:%%i') AS time_end,
                     veterinarian_id
                 FROM veterinarian_schedule
                 WHERE veterinarian_id = %s
                 ORDER BY 
-                    FIELD(day, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
+                    FIELD(day, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'),
                     time_start
             """, (vet_id,))
             schedules = cur.fetchall()
@@ -532,6 +860,9 @@ def create_schedule():
 @role_required("veterinarian", "admin")
 def update_appointment(appointment_id):
     data = request.json
+    claims = get_jwt()
+    role = claims.get("role")
+    user_id = current_user_id()
     allowed = ["datetime", "status", "pet_id", "clinic_id", "veterinarian_id"]
     fields = []
     values = []
@@ -541,6 +872,41 @@ def update_appointment(appointment_id):
             values.append(data[k])
     if not fields:
         return jsonify({"message": "No fields to update"}), 400
+    # If clinic or veterinarian is changing, validate the pairing via mapping
+    if "clinic_id" in data or "veterinarian_id" in data:
+        conn = get_connection()
+        with conn:
+            with conn.cursor() as cur:
+                # Fetch current values to fill missing pieces
+                cur.execute(
+                    "SELECT clinic_id, veterinarian_id FROM appointment WHERE appointment_id=%s",
+                    (appointment_id,)
+                )
+                current_row = cur.fetchone()
+                if not current_row:
+                    return jsonify({"message": "Appointment not found"}), 404
+                target_clinic = data.get("clinic_id", current_row["clinic_id"])
+                target_vet = data.get("veterinarian_id", current_row["veterinarian_id"])
+                is_valid, err = ensure_vet_and_clinic(cur, target_vet, target_clinic)
+                if not is_valid:
+                    return jsonify({"message": err}), 400
+        # reopen connection below for actual update
+    # Restrict veterinarians to their own appointments
+    if role == "veterinarian":
+        conn = get_connection()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                        SELECT 1
+                        FROM appointment a
+                        JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                        WHERE a.appointment_id=%s AND v.user_id=%s
+                    """,
+                    (appointment_id, user_id)
+                )
+                if not cur.fetchone():
+                    return jsonify({"message": "You can only update your own appointments"}), 403
     values.append(appointment_id)
     conn = get_connection()
     with conn:
@@ -560,6 +926,22 @@ def get_users():
             return jsonify(cur.fetchall())
 
 
+@app.get("/users/<int:user_id>")
+@role_required("admin")
+def get_user(user_id):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_id, first_name, last_name, email, phone_no, created_at FROM user WHERE user_id=%s",
+                (user_id,)
+            )
+            user = cur.fetchone()
+            if not user:
+                return jsonify({"message": "Not found"}), 404
+            return jsonify(user)
+
+
 # =========================
 # TREATMENT RECORD (VET)
 # =========================
@@ -569,23 +951,152 @@ def get_treatments():
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT 
-                    t.record_id,
-                    t.date,
-                    t.diagnosis,
-                    t.note,
-                    t.appointment_id,
-                    p.name AS pet_name,
-                    CONCAT(u.first_name, ' ', u.last_name) AS vet_name,
-                    v.license_no
-                FROM treatment_record t
-                LEFT JOIN appointment a ON t.appointment_id = a.appointment_id
-                LEFT JOIN pet p ON a.pet_id = p.pet_id
-                LEFT JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
-                LEFT JOIN user u ON v.user_id = u.user_id
-            """)
+            cur.execute("SELECT role FROM user WHERE user_id=%s", (current_user_id(),))
+            claims_role = get_jwt().get("role")
+            if claims_role == "admin":
+                cur.execute("""
+                    SELECT 
+                        t.record_id,
+                        t.date,
+                        t.diagnosis,
+                        t.note,
+                        t.appointment_id,
+                        p.name AS pet_name,
+                        CONCAT(u.first_name, ' ', u.last_name) AS vet_name,
+                        v.license_no
+                    FROM treatment_record t
+                    LEFT JOIN appointment a ON t.appointment_id = a.appointment_id
+                    LEFT JOIN pet p ON a.pet_id = p.pet_id
+                    LEFT JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN user u ON v.user_id = u.user_id
+                """)
+            else:
+                # Veterinarian sees only treatments tied to their own appointments
+                cur.execute("""
+                    SELECT 
+                        t.record_id,
+                        t.date,
+                        t.diagnosis,
+                        t.note,
+                        t.appointment_id,
+                        p.name AS pet_name,
+                        CONCAT(u.first_name, ' ', u.last_name) AS vet_name,
+                        v.license_no
+                    FROM treatment_record t
+                    LEFT JOIN appointment a ON t.appointment_id = a.appointment_id
+                    LEFT JOIN pet p ON a.pet_id = p.pet_id
+                    LEFT JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN user u ON v.user_id = u.user_id
+                    WHERE v.user_id = %s
+                """, (current_user_id(),))
             return jsonify(cur.fetchall())
+
+
+@app.get("/treatments/<int:record_id>")
+@role_required("veterinarian", "admin")
+def get_treatment(record_id):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            claims_role = get_jwt().get("role")
+            if claims_role == "admin":
+                cur.execute("""
+                    SELECT 
+                        t.record_id,
+                        t.date,
+                        t.diagnosis,
+                        t.note,
+                        t.appointment_id,
+                        p.name AS pet_name,
+                        CONCAT(u.first_name, ' ', u.last_name) AS vet_name,
+                        v.license_no
+                    FROM treatment_record t
+                    LEFT JOIN appointment a ON t.appointment_id = a.appointment_id
+                    LEFT JOIN pet p ON a.pet_id = p.pet_id
+                    LEFT JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN user u ON v.user_id = u.user_id
+                    WHERE t.record_id = %s
+                """, (record_id,))
+            else:
+                cur.execute("""
+                    SELECT 
+                        t.record_id,
+                        t.date,
+                        t.diagnosis,
+                        t.note,
+                        t.appointment_id,
+                        p.name AS pet_name,
+                        CONCAT(u.first_name, ' ', u.last_name) AS vet_name,
+                        v.license_no
+                    FROM treatment_record t
+                    LEFT JOIN appointment a ON t.appointment_id = a.appointment_id
+                    LEFT JOIN pet p ON a.pet_id = p.pet_id
+                    LEFT JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                    LEFT JOIN user u ON v.user_id = u.user_id
+                    WHERE t.record_id = %s AND v.user_id = %s
+                """, (record_id, current_user_id()))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"message": "Not found"}), 404
+            return jsonify(row)
+
+
+@app.post("/treatments")
+@role_required("veterinarian", "admin")
+def create_treatment():
+    data = request.json
+    appointment_id = data.get("appointment_id")
+    if not appointment_id:
+        return jsonify({"message": "appointment_id is required"}), 400
+
+    claims = get_jwt()
+    role = claims.get("role")
+    user_id = current_user_id()
+
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            # Ensure appointment exists and, for vets, is assigned to them
+            if role == "veterinarian":
+                cur.execute(
+                    """
+                        SELECT a.appointment_id
+                        FROM appointment a
+                        JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                        WHERE a.appointment_id=%s AND v.user_id=%s
+                    """,
+                    (appointment_id, user_id)
+                )
+            else:
+                cur.execute(
+                    "SELECT appointment_id FROM appointment WHERE appointment_id=%s",
+                    (appointment_id,)
+                )
+            appt = cur.fetchone()
+            if not appt:
+                return jsonify({"message": "Appointment not found or not authorized"}), 404
+
+            cur.execute(
+                "SELECT 1 FROM treatment_record WHERE appointment_id=%s",
+                (appointment_id,)
+            )
+            if cur.fetchone():
+                return jsonify({"message": "Treatment record already exists for this appointment"}), 400
+
+            cur.execute(
+                """
+                    INSERT INTO treatment_record (date, diagnosis, note, appointment_id)
+                    VALUES (%s, %s, %s, %s)
+                """,
+                (
+                    data.get("date"),
+                    data.get("diagnosis", ""),
+                    data.get("note", ""),
+                    appointment_id
+                )
+            )
+            conn.commit()
+            return jsonify({"message": "Treatment created", "record_id": cur.lastrowid}), 201
 
 
 @app.put("/treatments/<int:record_id>")
@@ -593,9 +1104,26 @@ def get_treatments():
 def update_treatment(record_id):
     data = request.json
 
+    claims_role = get_jwt().get("role")
+    user_id = current_user_id()
+
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
+            if claims_role == "veterinarian":
+                cur.execute(
+                    """
+                        SELECT 1
+                        FROM treatment_record t
+                        JOIN appointment a ON t.appointment_id = a.appointment_id
+                        JOIN veterinarian v ON a.veterinarian_id = v.veterinarian_id
+                        WHERE t.record_id=%s AND v.user_id=%s
+                    """,
+                    (record_id, user_id)
+                )
+                if not cur.fetchone():
+                    return jsonify({"message": "You can only update your own treatment records"}), 403
+
             cur.execute("""
                 UPDATE treatment_record
                 SET diagnosis=%s, note=%s

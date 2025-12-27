@@ -343,7 +343,7 @@ const Appointments = () => {
               <span>📋</span>
               All Appointments
             </h2>
-            <p className="text-purple-100 mt-1">Total: {appointments.filter(apt => apt.veterinarian_name && apt.veterinarian_name !== 'N/A').length} appointments</p>
+            <p className="text-purple-100 mt-1">Total: {appointments.length} appointments</p>
           </div>
 
           <div className="p-6">
@@ -355,7 +355,7 @@ const Appointments = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {appointments.filter(apt => apt.veterinarian_name && apt.veterinarian_name !== 'N/A').map((apt) => (
+                {appointments.map((apt) => (
                   <div key={apt.appointment_id} className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-xl p-6 hover:shadow-lg transition">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div className="flex-1">
@@ -369,7 +369,7 @@ const Appointments = () => {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-gray-500 font-medium">👨‍⚕️ Vet:</span>
-                            <span className="text-gray-700 font-semibold">{apt.veterinarian_name || 'N/A'}</span>
+                            <span className="text-gray-700 font-semibold">{apt.veterinarian_name || apt.vet_name || 'N/A'}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-gray-500 font-medium">📅 Date:</span>
