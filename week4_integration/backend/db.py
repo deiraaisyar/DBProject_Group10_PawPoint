@@ -19,14 +19,16 @@ def init_db_pool():
     if _pool is None:
         _pool = SimpleConnectionPool(
             minconn=1,
-            maxconn=5,
+            maxconn=2,  # Reduced for Supabase free tier
             host=os.environ["DB_HOST"],
             user=os.environ["DB_USER"],
             password=os.environ["DB_PASSWORD"],
             database=os.environ.get("DB_NAME", "postgres"),
             port=int(os.environ.get("DB_PORT", 5432)),
             sslmode="require",
-            cursor_factory=DictCursor
+            cursor_factory=DictCursor,
+            connect_timeout=10,
+            options="-c statement_timeout=30000"
         )
 
 def get_connection():
