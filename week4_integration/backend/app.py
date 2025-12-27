@@ -16,7 +16,7 @@ app = Flask(__name__)
 CORS(app)
 
 # =========================
-# CONNECTION WRAPPER (Anti pool exhausted!)
+# CONNECTION WRAPPER 
 # =========================
 class ConnectionWrapper:
     """Wrapper class that proxies all connection methods but overrides close()"""
