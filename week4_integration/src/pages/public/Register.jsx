@@ -11,6 +11,7 @@ const Register = () => {
     password: '',
     phone_no: '',
     role: 'owner',
+    license_no: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -141,6 +142,27 @@ const Register = () => {
               </select>
               <p className="text-xs text-gray-500 mt-2">Admin accounts are provisioned by the company and cannot be registered here.</p>
             </div>
+
+            {/* Conditional License Number field for Veterinarians */}
+            {formData.role === 'vet' && (
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+                <label className="block text-sm font-semibold text-blue-900 mb-2">
+                  👨‍⚕️ Veterinarian License Number *
+                </label>
+                <input
+                  type="text"
+                  name="license_no"
+                  placeholder="e.g., VET-2024-12345"
+                  value={formData.license_no}
+                  onChange={handleChange}
+                  required={formData.role === 'vet'}
+                  className="w-full border-2 border-blue-300 px-4 py-3 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none"
+                />
+                <p className="text-xs text-blue-700 mt-2">
+                  ⚠️ Your license number must be registered in our system to create a veterinarian account.
+                </p>
+              </div>
+            )}
 
             <button
               type="submit"

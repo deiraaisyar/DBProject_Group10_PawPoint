@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { treatmentAPI } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Treatments = () => {
+  const { user } = useAuth();
   const [treatments, setTreatments] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -9,7 +11,11 @@ const Treatments = () => {
     const fetchTreatments = async () => {
       try {
         const response = await treatmentAPI.getAll();
-        setTreatments(response.data);
+        // Filter treatments for current veterinarian only
+        const myTreatments = response.data.filter(
+          treatment => treatment.user_id === user?.user_id
+        );
+        setTreatments(myTreatments);
       } catch (err) {
         console.error('Failed to fetch treatments:', err);
       } finally {
@@ -17,8 +23,10 @@ const Treatments = () => {
       }
     };
 
-    fetchTreatments();
-  }, []);
+    if (user?.user_id) {
+      fetchTreatments();
+    }
+  }, [user]);
 
   if (loading) {
     return (
@@ -48,7 +56,7 @@ const Treatments = () => {
           <div className="p-6 bg-gradient-to-r from-purple-600 to-pink-600">
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
               <span>📋</span>
-              All Treatments
+              My Treatments
             </h2>
             <p className="text-purple-100 mt-1">Total: {treatments.length} treatment records</p>
           </div>

@@ -93,9 +93,38 @@ def register():
                 VALUES (%s,%s)
             """, (user_id, role["role_id"]))
 
+            # If registering as veterinarian, handle license_no validation
+            if role_name == "veterinarian":
+                license_no = data.get("license_no")
+                if not license_no:
+                    return jsonify({"message": "License number is required for veterinarians"}), 400
+                
+                # Check if license exists and is not already used
+                cur.execute("""
+                    SELECT veterinarian_id, user_id 
+                    FROM veterinarian 
+                    WHERE license_no = %s
+                """, (license_no,))
+                existing_vet = cur.fetchone()
+                
+                if not existing_vet:
+                    # License doesn't exist in system
+                    return jsonify({"message": "Invalid license number. Please contact admin."}), 400
+                
+                if existing_vet["user_id"] is not None:
+                    # License already associated with another user
+                    return jsonify({"message": "This license is already registered to another user."}), 400
+                
+                # Update veterinarian record with new user_id
+                cur.execute("""
+                    UPDATE veterinarian 
+                    SET user_id = %s 
+                    WHERE license_no = %s
+                """, (user_id, license_no))
+
             conn.commit()
 
-    return jsonify({"message": "User registered"}), 201
+    return jsonify({"message": "User registered successfully"}), 201
 
 
 @app.post("/login")
@@ -448,24 +477,55 @@ def get_veterinarian_schedules(vet_id):
 @app.post("/veterinarian-schedules")
 @role_required("veterinarian", "admin")
 def create_schedule():
-    data = request.json
+    try:
+        data = request.json
+        
+        # Validate required fields
+        if not data.get("day") or not data.get("time_start") or not data.get("time_end") or not data.get("veterinarian_id"):
+            return jsonify({"message": "Missing required fields: day, time_start, time_end, veterinarian_id"}), 400
+        
+        # Normalize day to lowercase
+        day_lower = data["day"].lower()
+        
+        # Validate day value
+        valid_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        if day_lower not in valid_days:
+            return jsonify({"message": f"Invalid day. Must be one of: {', '.join(valid_days)}"}), 400
 
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO veterinarian_schedule
-                (day, time_start, time_end, veterinarian_id)
-                VALUES (%s, %s, %s, %s)
-            """, (
-                data["day"],
-                data["time_start"],
-                data["time_end"],
-                data["veterinarian_id"]
-            ))
-            conn.commit()
+        conn = get_connection()
+        with conn:
+            with conn.cursor() as cur:
+                # Check if veterinarian exists
+                cur.execute("SELECT veterinarian_id FROM veterinarian WHERE veterinarian_id=%s", (data["veterinarian_id"],))
+                if not cur.fetchone():
+                    return jsonify({"message": "Veterinarian not found"}), 404
+                
+                # Check if schedule already exists for this day
+                cur.execute(
+                    "SELECT schedule_id FROM veterinarian_schedule WHERE veterinarian_id=%s AND LOWER(day)=%s",
+                    (data["veterinarian_id"], day_lower)
+                )
+                if cur.fetchone():
+                    return jsonify({"message": "Schedule already exists for this day"}), 400
+                
+                # Insert schedule with normalized day
+                cur.execute("""
+                    INSERT INTO veterinarian_schedule
+                    (day, time_start, time_end, veterinarian_id)
+                    VALUES (%s, %s, %s, %s)
+                """, (
+                    day_lower,
+                    data["time_start"],
+                    data["time_end"],
+                    data["veterinarian_id"]
+                ))
+                conn.commit()
 
-    return jsonify({"message": "Schedule created"}), 201
+        return jsonify({"message": "Schedule created successfully"}), 201
+    
+    except Exception as e:
+        print(f"Error creating schedule: {str(e)}")
+        return jsonify({"message": f"Failed to create schedule: {str(e)}"}), 500
 
 
 @app.put("/appointments/<int:appointment_id>")

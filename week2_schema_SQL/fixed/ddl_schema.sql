@@ -50,7 +50,7 @@ CREATE TABLE pet_owner (
 CREATE TABLE veterinarian (
     veterinarian_id INT AUTO_INCREMENT PRIMARY KEY,
     license_no VARCHAR(100) NOT NULL UNIQUE,
-    user_id INT NOT NULL,
+    user_id INT,
     FOREIGN KEY (user_id) REFERENCES user(user_id)
         ON DELETE CASCADE
 );
