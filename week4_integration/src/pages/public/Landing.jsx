@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import logo from '../../assets/logopaw.svg';
 
 const Landing = () => {
   const { isAuthenticated, user } = useAuth();
@@ -58,8 +59,8 @@ const Landing = () => {
       {/* Hero Section */}
       <div className="max-w-7xl mx-auto px-6 py-20">
         <div className="text-center mb-20">
-          <div className="inline-block mb-8 bg-white rounded-full p-6 shadow-2xl">
-            <div className="text-7xl md:text-8xl animate-bounce">🐾</div>
+          <div className="inline-block mb-8 bg-white rounded-full p-6 shadow-2xl animate-bounce">
+            <img src={logo} alt="PawPoint Logo" className="w-24 h-24 md:w-32 md:h-32" />
           </div>
           <h1 className="text-5xl md:text-7xl font-extrabold mb-6">
             <span className="bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 text-transparent bg-clip-text drop-shadow-lg">

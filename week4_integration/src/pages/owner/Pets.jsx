@@ -70,7 +70,7 @@ const Pets = () => {
             <h1 className="text-4xl font-extrabold bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 text-transparent bg-clip-text mb-2">
               🐾 My Pets
             </h1>
-            <p className="text-gray-600 text-lg">Manage your beloved pets</p>
+            <p className="text-gray-600 text-lg">Select a pet to view details</p>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
@@ -178,22 +178,48 @@ const Pets = () => {
               <div
                 key={pet.pet_id}
                 onClick={() => navigate(`/owner/pets/${pet.pet_id}`)}
-                className="bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl shadow-xl p-6 text-white hover:shadow-2xl transition cursor-pointer transform hover:scale-105"
+                className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition cursor-pointer transform hover:scale-105 overflow-hidden border-t-4 border-gradient-to-r from-purple-500 to-pink-500"
               >
-                <div className="mb-4">
-                  <span className="text-4xl">🐾</span>
+                {/* Color Bar */}
+                <div className="h-1 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600"></div>
+                
+                {/* Pet Icon */}
+                <div className="text-center pt-6">
+                  <span className="text-5xl">🐾</span>
                 </div>
-                <h3 className="text-2xl font-bold mb-2">{pet.name}</h3>
-                <div className="space-y-2 text-purple-100">
-                  <p className="flex items-center gap-2">
-                    <span>🦴</span> {pet.species} {pet.breed && `• ${pet.breed}`}
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <span>👫</span> {pet.gender}
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <span>🎂</span> {pet.age} years old
-                  </p>
+
+                {/* Pet Name - Prominent */}
+                <div className="text-center px-6 py-4">
+                  <h3 className="text-3xl font-extrabold bg-gradient-to-r from-purple-600 to-pink-600 text-transparent bg-clip-text">
+                    {pet.name}
+                  </h3>
+                </div>
+
+                {/* Pet Details */}
+                <div className="px-6 pb-6 space-y-3 text-gray-700">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>🦴</span>
+                    <span className="font-semibold">{pet.species}</span>
+                    {pet.breed && (
+                      <>
+                        <span className="text-gray-400">•</span>
+                        <span>{pet.breed}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>👫</span>
+                    <span className="capitalize">{pet.gender}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>🎂</span>
+                    <span>{pet.age} years old</span>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="bg-gray-50 px-6 py-3 text-center text-xs text-gray-500 font-semibold">
+                  Click to view details →
                 </div>
               </div>
             ))

@@ -72,6 +72,7 @@ export const vetAPI = {
   getAll: () => api.get('/veterinarians'),
   getById: (id) => api.get(`/veterinarians/${id}`),
   create: (data) => api.post('/veterinarians', data),
+  getByClinic: (clinicId) => api.get(`/veterinarians/clinic/${clinicId}`),
   getSchedules: (vetId) => api.get(`/veterinarians/${vetId}/schedules`),
   createSchedule: (data) => api.post('/veterinarian-schedules', data),
 };

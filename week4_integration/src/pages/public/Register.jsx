@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authAPI } from '../../services/api';
+import logo from '../../assets/logopaw.svg';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -40,8 +41,8 @@ const Register = () => {
       <div className="max-w-md w-full">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-block bg-gradient-to-r from-purple-600 to-pink-600 text-white w-20 h-20 rounded-2xl flex items-center justify-center text-4xl mb-4 shadow-lg">
-            🐾
+          <div className="inline-block bg-white w-24 h-24 rounded-2xl flex items-center justify-center mb-4 shadow-lg p-3">
+            <img src={logo} alt="PawPoint Logo" className="w-full h-full" />
           </div>
           <h1 className="text-4xl font-bold">
             <span className="bg-gradient-to-r from-purple-600 to-pink-600 text-transparent bg-clip-text">

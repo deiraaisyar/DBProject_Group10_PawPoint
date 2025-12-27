@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import logo from '../assets/logopaw.svg';
 
 const Navbar = () => {
   const { user, logout, isAuthenticated } = useAuth();
@@ -55,8 +56,9 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link to="/" className="text-2xl font-bold text-white flex items-center gap-2 hover:scale-105 transition">
-            <span className="text-3xl">🐾</span> PawPoint
+          <Link to="/" className="text-2xl font-bold text-white flex items-center gap-3 hover:scale-105 transition">
+            <img src={logo} alt="PawPoint Logo" className="w-10 h-10" />
+            <span>PawPoint</span>
           </Link>
 
           {/* Desktop Menu */}
