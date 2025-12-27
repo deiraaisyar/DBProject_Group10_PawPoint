@@ -18,26 +18,35 @@ CORS(app)
 # =========================
 # CONNECTION WRAPPER (Anti pool exhausted!)
 # =========================
-_connections = {}
+class ConnectionWrapper:
+    """Wrapper class that proxies all connection methods but overrides close()"""
+    def __init__(self, conn):
+        self._conn = conn
+        self._closed = False
+    
+    def close(self):
+        """Return connection to pool instead of closing it"""
+        if not self._closed:
+            release_connection(self._conn)
+            self._closed = True
+    
+    def __getattr__(self, name):
+        """Proxy all other methods to the real connection"""
+        return getattr(self._conn, name)
+    
+    def __enter__(self):
+        return self._conn.__enter__()
+    
+    def __exit__(self, *args):
+        return self._conn.__exit__(*args)
 
 def get_connection():
     """
-    Wrapper that tracks connections and ensures they're released properly.
-    Returns a connection object with overridden close() method.
+    Get connection from pool and wrap it to ensure proper cleanup.
+    When conn.close() is called, connection is returned to pool.
     """
     conn = _get_connection()
-    orig_close = conn.close
-    conn_id = id(conn)
-    _connections[conn_id] = conn
-    
-    def safe_close():
-        """Override close to return to pool instead of closing"""
-        if conn_id in _connections:
-            release_connection(_connections[conn_id])
-            del _connections[conn_id]
-    
-    conn.close = safe_close
-    return conn
+    return ConnectionWrapper(conn)
 
 # =========================
 # JWT CONFIG
