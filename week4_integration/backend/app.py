@@ -5,7 +5,7 @@ from flask_jwt_extended import (
 )
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
-from db import get_connection
+from db import get_db_conn, get_connection as _get_connection, release_connection
 import os
 from dotenv import load_dotenv
 from functools import wraps
@@ -14,6 +14,30 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# =========================
+# CONNECTION WRAPPER (Anti pool exhausted!)
+# =========================
+_connections = {}
+
+def get_connection():
+    """
+    Wrapper that tracks connections and ensures they're released properly.
+    Returns a connection object with overridden close() method.
+    """
+    conn = _get_connection()
+    orig_close = conn.close
+    conn_id = id(conn)
+    _connections[conn_id] = conn
+    
+    def safe_close():
+        """Override close to return to pool instead of closing"""
+        if conn_id in _connections:
+            release_connection(_connections[conn_id])
+            del _connections[conn_id]
+    
+    conn.close = safe_close
+    return conn
 
 # =========================
 # JWT CONFIG
