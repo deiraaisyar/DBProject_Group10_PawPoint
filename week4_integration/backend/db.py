@@ -1,50 +1,55 @@
 import os
 import psycopg2
-from psycopg2.extras import DictCursor
 from psycopg2.pool import SimpleConnectionPool
+from psycopg2.extras import DictCursor
 from dotenv import load_dotenv
+from contextlib import contextmanager
 
 load_dotenv()
 
-# =========================
-# Global Connection Pool
-# =========================
 _pool = None
+
 
 def init_db_pool():
     """
-    Initialize PostgreSQL connection pool (Supabase-friendly)
+    Initialize PostgreSQL connection pool (Supabase-safe)
     """
     global _pool
     if _pool is None:
         _pool = SimpleConnectionPool(
             minconn=1,
-            maxconn=2,  # Reduced for Supabase free tier
+            maxconn=2,  # Supabase free tier SAFE
             host=os.environ["DB_HOST"],
             user=os.environ["DB_USER"],
             password=os.environ["DB_PASSWORD"],
             database=os.environ.get("DB_NAME", "postgres"),
-            port=int(os.environ.get("DB_PORT", 5432)),
-            sslmode="require",
+            port=int(os.environ.get("DB_PORT", 6543)),
+            sslmode=os.environ.get("DB_SSLMODE", "require"),
             cursor_factory=DictCursor,
             connect_timeout=10,
             options="-c statement_timeout=30000"
         )
 
+
 def get_connection():
-    """
-    Get connection from pool
-    """
     if _pool is None:
         init_db_pool()
     return _pool.getconn()
 
+
 def release_connection(conn):
-    """
-    Return connection to pool
-    """
-    if _pool:
+    if _pool and conn:
         _pool.putconn(conn)
+
+
+@contextmanager
+def get_db_conn():
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        release_connection(conn)
+
 
 # =========================
 # Local test
@@ -52,11 +57,9 @@ def release_connection(conn):
 if __name__ == "__main__":
     try:
         init_db_pool()
-        conn = get_connection()
-        with conn:
+        with get_db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1 AS test")
                 print("DB connected! Result:", cur.fetchone())
-        release_connection(conn)
     except Exception as e:
         print("Connection error:", e)
