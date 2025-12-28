@@ -18,7 +18,7 @@ def init_db_pool():
     if _pool is None:
         _pool = SimpleConnectionPool(
             minconn=1,
-            maxconn=2,  # Supabase free tier SAFE
+            maxconn=10,  # allow more concurrent requests; still modest for Supabase
             host=os.environ["DB_HOST"],
             user=os.environ["DB_USER"],
             password=os.environ["DB_PASSWORD"],

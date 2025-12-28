@@ -33,12 +33,22 @@ class ConnectionWrapper:
     def __getattr__(self, name):
         """Proxy all other methods to the real connection"""
         return getattr(self._conn, name)
-    
+
     def __enter__(self):
-        return self._conn.__enter__()
-    
-    def __exit__(self, *args):
-        return self._conn.__exit__(*args)
+        """Allow `with conn:` to return the wrapper itself."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        """Commit/rollback then return the connection to the pool."""
+        try:
+            if exc_type:
+                self._conn.rollback()
+            else:
+                self._conn.commit()
+        finally:
+            self.close()
+        # propagate exceptions (don't suppress)
+        return False
 
 def get_connection():
     """
