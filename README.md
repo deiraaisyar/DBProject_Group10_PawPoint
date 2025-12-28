@@ -4,6 +4,11 @@ A full-stack veterinary clinic management system built with modern web technolog
 
 For Database (MII212501) Project. Supervised by Drs. Edi Winarko, M.Sc.,Ph.D.
 
+## Members
+- Deira Aisya Refani (24/532821/PA/22539)
+- Ratu Faiha Salsabilla (24/532756/PA/22533)
+- Aufaa Azzahra Aryawan (24/546854/PA/23215)
+
 ## 🌟 Features
 
 ### For Pet Owners
@@ -469,28 +474,3 @@ lsof -ti:5173 | xargs kill -9
 - [Vite Documentation](https://vitejs.dev/)
 - [Tailwind CSS Documentation](https://tailwindcss.com/)
 
-## 👥 Team
-
-**Group 10 - Database Course Project**
-- Backend Development: Flask API, PostgreSQL integration, authentication
-- Frontend Development: React UI, routing, state management
-- Database Design: Schema design, triggers, data modeling
-- Deployment: Vercel (frontend), Render (backend), Supabase (database)
-
-## 📄 License
-
-This project is developed as part of Database Course (Semester 3) at Universitas Gadjah Mada.
-
-## 🙏 Acknowledgments
-
-- Course instructors for guidance and support
-- Supabase for free PostgreSQL hosting
-- Render for free backend hosting
-- Vercel for free frontend hosting
-
----
-
-## Contributors
-- Deira Aisya Refani (24/532821/PA/22539)
-- Ratu Faiha Salsabilla (24/532756/PA/22533)
-- Aufaa Azzahra Aryawan (24/546854/PA/23215)
