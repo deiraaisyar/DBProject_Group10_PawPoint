@@ -1,9 +1,9 @@
 # PawPoint Backend (PostgreSQL)
 
 ## Overview
-Backend API untuk aplikasi PawPoint yang membantu mengelola appointment, perawatan hewan peliharaan, dan data klinik hewan.
+Backend API for the PawPoint application that helps manage appointments, pet care, and veterinary clinic data.
 
-Backend ini dibangun dengan Flask dan menggunakan PostgreSQL sebagai database.
+This backend is built with Flask and uses PostgreSQL as the database.
 
 ## Prerequisites
 - Python 3.8+
@@ -12,12 +12,12 @@ Backend ini dibangun dengan Flask dan menggunakan PostgreSQL sebagai database.
 
 ## Setup
 
-### 1. Clone atau setup environment
+### 1. Change directory / set up environment
 ```bash
 cd backend
 ```
 
-### 2. Create virtual environment
+### 2. Create a virtual environment
 ```bash
 python -m venv venv
 
@@ -33,13 +33,13 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 4. Setup .env file
-Copy `.env.example` ke `.env` dan konfigurasi:
+### 4. Set up the .env file
+Copy `.env.example` to `.env` and configure:
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` dan sesuaikan:
+Edit `.env` and adjust:
 ```
 DB_HOST=localhost
 DB_USER=postgres
@@ -49,14 +49,14 @@ DB_PORT=5432
 JWT_SECRET_KEY=your-secret-key
 ```
 
-### 5. Setup Database
-Pastikan PostgreSQL sudah running, kemudian:
+### 5. Set up the database
+Ensure PostgreSQL is running, then:
 
 ```bash
 # Create database
 createdb pawpoint
 
-# Run schema dari week2
+# Run schema from week2
 psql -U postgres -d pawpoint -f ../week2_schema_SQL/final/ddl_schema.sql
 psql -U postgres -d pawpoint -f ../week2_schema_SQL/final/insert_admin.sql
 psql -U postgres -d pawpoint -f ../week2_schema_SQL/final/insert_data.sql
@@ -64,63 +64,63 @@ psql -U postgres -d pawpoint -f ../week2_schema_SQL/final/insert_veterinarian.sq
 psql -U postgres -d pawpoint -f ../week2_schema_SQL/final/triggers.sql
 ```
 
-### 6. Run Backend
+### 6. Run the backend
 ```bash
 python app.py
 ```
 
-Backend akan berjalan di `http://localhost:5000`
+The backend runs at http://localhost:5000
 
 ## API Documentation
 
 ### Authentication
-- **POST** `/register` - Daftar user baru
-- **POST** `/login` - Login dan dapatkan JWT token
-- **GET** `/profile` - Lihat profil user (memerlukan auth)
+- **POST** `/register` — Register a new user
+- **POST** `/login` — Log in and receive a JWT token
+- **GET** `/profile` — View user profile (requires auth)
 
 ### Pets
-- **POST** `/pets` - Buat pet baru (owner/admin)
-- **GET** `/pets` - Lihat daftar pet (owner/admin)
-- **GET** `/pets/<id>` - Lihat detail pet
-- **PUT** `/pets/<id>` - Update pet
-- **DELETE** `/pets/<id>` - Hapus pet
+- **POST** `/pets` — Create a new pet (owner/admin)
+- **GET** `/pets` — List pets (owner/admin)
+- **GET** `/pets/<id>` — View pet details
+- **PUT** `/pets/<id>` — Update a pet
+- **DELETE** `/pets/<id>` — Delete a pet
 
 ### Appointments
-- **POST** `/appointments` - Buat appointment (owner/admin)
-- **GET** `/appointments` - Lihat daftar appointment
-- **GET** `/appointments/<id>` - Lihat detail appointment
-- **PUT** `/appointments/<id>` - Update appointment (vet/admin)
-- **PUT** `/appointments/<id>/status` - Update status appointment
+- **POST** `/appointments` — Create an appointment (owner/admin)
+- **GET** `/appointments` — List appointments
+- **GET** `/appointments/<id>` — View appointment details
+- **PUT** `/appointments/<id>` — Update an appointment (vet/admin)
+- **PUT** `/appointments/<id>/status` — Update appointment status
 
 ### Clinics
-- **GET** `/clinics` - Lihat daftar klinik
-- **GET** `/clinics/<id>` - Lihat detail klinik
-- **POST** `/clinics` - Buat klinik baru (admin)
-- **PUT** `/clinics/<id>` - Update klinik (admin)
+- **GET** `/clinics` — List clinics
+- **GET** `/clinics/<id>` — View clinic details
+- **POST** `/clinics` — Create a new clinic (admin)
+- **PUT** `/clinics/<id>` — Update a clinic (admin)
 
 ### Veterinarians
-- **GET** `/veterinarians` - Lihat daftar dokter hewan
-- **GET** `/veterinarians/<id>` - Lihat detail dokter hewan
-- **GET** `/veterinarians/clinic/<clinic_id>` - Lihat dokter hewan di klinik tertentu
-- **POST** `/veterinarians` - Buat dokter hewan baru (admin)
-- **GET** `/veterinarians/<id>/schedules` - Lihat jadwal dokter hewan
-- **POST** `/veterinarian-schedules` - Buat jadwal dokter hewan
+- **GET** `/veterinarians` — List veterinarians
+- **GET** `/veterinarians/<id>` — View veterinarian details
+- **GET** `/veterinarians/clinic/<clinic_id>` — View veterinarians in a specific clinic
+- **POST** `/veterinarians` — Create a new veterinarian (admin)
+- **GET** `/veterinarians/<id>/schedules` — View veterinarian schedules
+- **POST** `/veterinarian-schedules` — Create veterinarian schedules
 
 ### Treatments
-- **GET** `/treatments` - Lihat daftar treatment (vet/admin)
-- **GET** `/treatments/<id>` - Lihat detail treatment (vet/admin)
-- **POST** `/treatments` - Buat treatment record (vet/admin)
-- **PUT** `/treatments/<id>` - Update treatment record (vet/admin)
+- **GET** `/treatments` — List treatments (vet/admin)
+- **GET** `/treatments/<id>` — View treatment details (vet/admin)
+- **POST** `/treatments` — Create a treatment record (vet/admin)
+- **PUT** `/treatments/<id>` — Update a treatment record (vet/admin)
 
 ### Reports (Admin Only)
-- **GET** `/reports/appointments/status` - Report appointment by status
-- **GET** `/reports/appointments/clinic` - Report appointment by clinic
-- **GET** `/reports/treatments` - Report treatments
+- **GET** `/reports/appointments/status` — Appointment report by status
+- **GET** `/reports/appointments/clinic` — Appointment report by clinic
+- **GET** `/reports/treatments` — Treatments report
 
 ## Development Notes
-- Semua endpoint terenkripsi dengan JWT authentication kecuali `/register` dan `/login`
+- All endpoints are protected with JWT authentication except `/register` and `/login`
 - Role-based access control: `pet_owner`, `veterinarian`, `admin`
-- Database menggunakan PostgreSQL dengan relasi yang sudah didefinisikan di week2
+- The database uses PostgreSQL with relationships defined in week2
 
 ## Common Issues
 
@@ -128,10 +128,10 @@ Backend akan berjalan di `http://localhost:5000`
 ```
 connection error: (2003, "Can't connect to MySQL server...")
 ```
-Solusi: Pastikan PostgreSQL sudah running dan credentials di `.env` benar
+Solution: Ensure PostgreSQL is running and the credentials in `.env` are correct
 
 ### Database Error
-Pastikan semua migration SQL sudah dijalankan dengan benar.
+Ensure all SQL migrations have been executed correctly.
 
 ## License
 MIT

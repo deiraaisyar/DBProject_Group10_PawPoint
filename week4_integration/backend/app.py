@@ -742,7 +742,6 @@ def create_owner():
 
 
 @app.get("/clinics")
-@jwt_required()
 def get_clinics():
     conn = get_connection()
     try:
@@ -759,7 +758,6 @@ def get_clinics():
 
 
 @app.get("/clinics/<int:clinic_id>")
-@jwt_required()
 def get_clinic(clinic_id):
     conn = get_connection()
     try:

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { authAPI } from '../../services/api';
+import { authAPI, clinicAPI } from '../../services/api';
 import logo from '../../assets/logopaw.svg';
 
 const Register = () => {
@@ -12,13 +12,46 @@ const Register = () => {
     phone_no: '',
     role: 'owner',
     license_no: '',
+    clinic_id: '',
   });
+  const [clinics, setClinics] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingClinics, setLoadingClinics] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const fetchClinics = async () => {
+      setLoadingClinics(true);
+      try {
+        const res = await clinicAPI.getAll();
+        setClinics(res.data || []);
+      } catch (err) {
+        console.error('Failed to load clinics', err);
+        setError('Failed to load clinics. Please refresh and try again.');
+      } finally {
+        setLoadingClinics(false);
+      }
+    };
+
+    fetchClinics();
+  }, []);
+
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    // Reset veterinarian-only fields when switching to a non-vet role
+    if (name === 'role' && value !== 'vet' && value !== 'veterinarian') {
+      setFormData({
+        ...formData,
+        role: value,
+        license_no: '',
+        clinic_id: '',
+      });
+      return;
+    }
+
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleSubmit = async (e) => {
@@ -26,8 +59,18 @@ const Register = () => {
     setError('');
     setLoading(true);
 
+    if (formData.role === 'vet' && (!formData.license_no || !formData.clinic_id)) {
+      setError('License number and clinic/hospital are required for veterinarians.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      await authAPI.register(formData);
+      const payload = {
+        ...formData,
+        clinic_id: formData.clinic_id ? Number(formData.clinic_id) : undefined,
+      };
+      await authAPI.register(payload);
       navigate('/login');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
@@ -146,21 +189,49 @@ const Register = () => {
             {/* Conditional License Number field for Veterinarians */}
             {formData.role === 'vet' && (
               <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-                <label className="block text-sm font-semibold text-blue-900 mb-2">
-                  👨‍⚕️ Veterinarian License Number *
-                </label>
-                <input
-                  type="text"
-                  name="license_no"
-                  placeholder="e.g., VET-2024-12345"
-                  value={formData.license_no}
-                  onChange={handleChange}
-                  required={formData.role === 'vet'}
-                  className="w-full border-2 border-blue-300 px-4 py-3 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none"
-                />
-                <p className="text-xs text-blue-700 mt-2">
-                  ⚠️ Your license number must be registered in our system to create a veterinarian account.
-                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-blue-900 mb-2">
+                      👨‍⚕️ Veterinarian License Number *
+                    </label>
+                    <input
+                      type="text"
+                      name="license_no"
+                      placeholder="e.g., VET-2024-12345"
+                      value={formData.license_no}
+                      onChange={handleChange}
+                      required={formData.role === 'vet'}
+                      className="w-full border-2 border-blue-300 px-4 py-3 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none"
+                    />
+                    <p className="text-xs text-blue-700 mt-2">
+                      ⚠️ Your license number must be registered in our system to create a veterinarian account.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-blue-900 mb-2">
+                      🏥 Clinic / Hospital Affiliation *
+                    </label>
+                    <select
+                      name="clinic_id"
+                      value={formData.clinic_id}
+                      onChange={handleChange}
+                      required={formData.role === 'vet'}
+                      disabled={loadingClinics}
+                      className="w-full border-2 border-blue-300 px-4 py-3 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition outline-none bg-white disabled:opacity-60"
+                    >
+                      <option value="">{loadingClinics ? 'Loading clinics...' : 'Select clinic / hospital'}</option>
+                      {clinics.map((clinic) => (
+                        <option key={clinic.clinic_id} value={clinic.clinic_id}>
+                          {clinic.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-blue-700 mt-2">
+                      Link your account to your current clinic or hospital.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
